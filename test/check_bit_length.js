@@ -20,7 +20,8 @@ describe("CheckBitLength", () => {
 
     it("bitlength of `in` <= `b`", async () => {
         const input = {
-            "in": "4903265",
+            //"in": "4903265",
+            "in": "8388607",
         };
         const witness = await circ.calculateWitness(input);
         await circ.checkConstraints(witness);
@@ -29,7 +30,8 @@ describe("CheckBitLength", () => {
 
     it("bitlength of `in` > `b`", async () => {
         const input = {
-            "in": "13291873",
+            //"in": "13291873",
+            "in": "53167492",
         };
         const witness = await circ.calculateWitness(input);
         await circ.checkConstraints(witness);

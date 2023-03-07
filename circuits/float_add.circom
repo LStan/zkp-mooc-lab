@@ -146,7 +146,23 @@ template CheckBitLength(b) {
     signal input in;
     signal output out;
 
-    // TODO
+    // DONE
+    signal output bits[b];
+
+    for (var i = 0; i < b; i++) {
+        bits[i] <-- (in >> i) & 1;
+        bits[i] * (1 - bits[i]) === 0;
+    }
+
+    var sum_of_bits = 0;
+    for (var i = 0; i < b; i++) {
+        sum_of_bits += (2 ** i) * bits[i];
+    }
+
+    component ise = IsEqual();
+    ise.in[0] <== sum_of_bits;
+    ise.in[1] <== in;
+    out <== ise.out;
 }
 
 /*
@@ -194,7 +210,14 @@ template RightShift(shift) {
     signal input x;
     signal output y;
 
-    // TODO
+    // DONE
+    component check = LessThan(shift);
+
+    y <-- x >> shift;
+    signal x_sub <== y * (2 ** shift);
+    check.in[0] <== x - x_sub;
+    check.in[1] <== 2 ** shift;
+    check.out === 1;
 }
 
 /*
@@ -255,6 +278,28 @@ template LeftShift(shift_bound) {
     signal output y;
 
     // TODO
+    //y <-- x << shift;
+
+    signal mult[shift_bound];
+    mult[0] <== 1;
+    var shift_dec = shift;
+    component iz[shift_bound - 1];
+    for (var i = 0; i < shift_bound - 1; i++) {
+         iz[i] = IsZero();
+         iz[i].in <== shift_dec;
+         shift_dec -= 1 - iz[i].out;
+         mult[i + 1] <== mult[i] * (2 - iz[i].out);
+    }
+    y <== x * mult[shift_bound - 1];
+
+    // shift bound checks
+    component is_zero = IsZero();
+    is_zero.in <== shift_dec;
+    component or = OR();
+    or.a <== is_zero.out;
+    or.b <== skip_checks;
+
+    or.out === 1;
 }
 
 /*
@@ -270,6 +315,36 @@ template MSNZB(b) {
     signal output one_hot[b];
 
     // TODO
+
+    component n2b = Num2Bits(b);
+    n2b.in <== in;
+
+    signal conv_or[b];
+    component ors[b - 1];
+    component ands[b - 1];
+
+    conv_or[b - 1] <== n2b.bits[b - 1];
+    one_hot[b - 1] <== n2b.bits[b - 1];
+    for (var i = b - 2; i >= 0; i--) {
+        ors[i] = OR();
+        ors[i].a <== conv_or[i + 1];
+        ors[i].b <== n2b.bits[i];
+        conv_or[i] <== ors[i].out;
+
+        ands[i] = AND();
+        ands[i].a <== 1 - conv_or[i + 1];
+        ands[i].b <== n2b.bits[i];
+        one_hot[i] <== ands[i].out;
+    }
+
+
+    // enforse in != 0
+    component isz = IsZero();
+    isz.in <== in;
+    component or = OR();
+    or.a <== 1 - isz.out;
+    or.b <== skip_checks;
+    or.out === 1;
 }
 
 /*
@@ -287,7 +362,23 @@ template Normalize(k, p, P) {
     signal output m_out;
     assert(P > p);
 
-    // TODO
+    // DONE
+    component msnzb = MSNZB(P + 1);
+    msnzb.in <== m;
+    msnzb.skip_checks <== skip_checks;
+
+    var pow = 0;
+    for (var i = 1; i < P + 1; i++) {
+        pow += 2 ** (P - i) * msnzb.one_hot[i];
+    }
+    m_out <== m * pow;
+
+    var add = 0;
+    for (var i = 1; i < P + 1; i++) {
+        add += i * msnzb.one_hot[i];
+    }
+
+    e_out <== e + add - p;
 }
 
 /*
@@ -304,4 +395,85 @@ template FloatAdd(k, p) {
     signal output m_out;
 
     // TODO
+
+    // check that the inputs are well-formed
+    component cwf[2];
+    for (var i = 0; i < 2; i++) {
+        cwf[i] = CheckWellFormedness(k, p);
+        cwf[i].e <== e[i];
+        cwf[i].m <== m[i];
+    }
+
+    // Arrange numbers in the order of their magnitude.
+    signal mgn0 <== (e[0] * 2 ** (p + 1)) + m[0];
+    signal mgn1 <== (e[1] * 2 ** (p + 1)) + m[1];
+    component compare = LessThan(k + p + 1);
+    compare.in[0] <== mgn1;
+    compare.in[1] <== mgn0;
+
+    signal alpha_e, alpha_m, beta_e, beta_m;
+    component switcher_e = Switcher();
+    component switcher_m = Switcher();
+    switcher_e.sel <== compare.out;
+    switcher_m.sel <== compare.out;
+    switcher_e.L <== e[0];
+    switcher_e.R <== e[1];
+    switcher_m.L <== m[0];
+    switcher_m.R <== m[1];
+
+    alpha_e <== switcher_e.outR;
+    beta_e <== switcher_e.outL;
+    alpha_m <== switcher_m.outR;
+    beta_m <== switcher_m.outL;
+
+    signal diff <== alpha_e - beta_e;
+
+    // if diff > p + 1 or alpha_e == 0
+    component check1 = LessThan(k);
+    check1.in[0] <== p + 1;
+    check1.in[1] <== diff;
+    //log(alpha_e, beta_e, alpha_m, beta_m);
+    //log(diff);
+
+    component check2 = IsZero();
+    check2.in <== alpha_e;
+
+    component both_checks = OR();
+    both_checks.a <== check1.out;
+    both_checks.b <== check2.out;
+
+
+    // add the two numbers
+    component alpha_ls = LeftShift(p + 2);
+    alpha_ls.x <== alpha_m;
+    alpha_ls.shift <== diff;
+    alpha_ls.skip_checks <== 1;
+
+    signal unnorm_m <== alpha_ls.y + beta_m;
+    signal unnorm_e <== beta_e;
+
+    component normalize = Normalize(k, p, 2*p+1);
+    normalize.e <== unnorm_e;
+    normalize.m <== unnorm_m;
+    normalize.skip_checks <== 1;
+
+    component round = RoundAndCheck(k, p, 2*p+1);
+    round.e <== normalize.e_out;
+    round.m <== normalize.m_out;
+
+
+    // select output based on the previous check
+    component if_else_e = IfThenElse();
+    if_else_e.cond <== both_checks.out;
+    if_else_e.L <== alpha_e;
+    if_else_e.R <== round.e_out;
+    component if_else_m = IfThenElse();
+    if_else_m.cond <== both_checks.out;
+    if_else_m.L <== alpha_m;
+    if_else_m.R <== round.m_out;
+
+    e_out <== if_else_e.out;
+    m_out <== if_else_m.out;
+    //log(e_out, m_out);
 }
+

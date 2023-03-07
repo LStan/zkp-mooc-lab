@@ -62,6 +62,7 @@ def float_add(k, p, e_1, m_1, e_2, m_2):
     else:
         (alpha_e, alpha_m) = (e_2, m_2)
         (beta_e, beta_m) = (e_1, m_1)
+    print(alpha_e, beta_e, alpha_m, beta_m)
 
     diff = alpha_e - beta_e
     if diff > p + 1 or alpha_e == 0:
@@ -111,4 +112,12 @@ def test_float_add():
         print("output", float_to_string(k, p, exponent, mantissa), "exponent:", exponent, "mantissa:", mantissa)
 
 if __name__ == "__main__":
-    test_float_add()
+    #test_float_add()
+    k = 8
+    p = 23
+    (exponent_1, mantissa_1) = (43, 11672136)
+    (exponent_2, mantissa_2) = (5, 10566265)
+    #(exponent_1, mantissa_1) = (1056, 8879495032259305)
+    #(exponent_2, mantissa_2) = (1053, 5030141535601637)
+    (exponent, mantissa) = float_add(k, p, exponent_1, mantissa_1, exponent_2, mantissa_2)
+    print("output", float_to_string(k, p, exponent, mantissa), "exponent:", exponent, "mantissa:", mantissa)
